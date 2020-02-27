@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Threading.Tasks;
+
+using Microsoft.AspNetCore.Mvc;
 
 namespace System.Net.Http.DotNetty.TestServer.Controllers
 {
@@ -15,8 +17,12 @@ namespace System.Net.Http.DotNetty.TestServer.Controllers
         [HttpOptions]
         [HttpPatch]
         [HttpPut]
-        public ActionResult<string> Echo()
+        public async Task<ActionResult<string>> Echo(int delay = 0)
         {
+            if (delay > 0)
+            {
+                await Task.Delay(delay);
+            }
             return Ok(Request.Body);
         }
 

@@ -1,4 +1,5 @@
-﻿using System.Net.Http.DotNetty.Handler;
+﻿using System.Diagnostics;
+using System.Net.Http.DotNetty.Handler;
 using System.Net.Security;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -146,7 +147,10 @@ namespace System.Net.Http.DotNetty
             {
                 token.Register(() =>
                 {
-                    completionSource.TrySetException(new OperationCanceledException());
+                    _ = CloseChannelAsync().ContinueWith(_ =>
+                    {
+                        completionSource.TrySetException(new OperationCanceledException());
+                    }, TaskScheduler.Default);
                 });
             }
 
@@ -165,14 +169,20 @@ namespace System.Net.Http.DotNetty
                 }
             });
 
-            _ = channel.WriteAndFlushAsync(request).ContinueWith(task =>
+            var sendTask = channel.WriteAndFlushAsync(request);
+
+            try
             {
-                _channel = null;
-            }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-
-            var response = await completionSource.Task.ConfigureAwait(false);
-
-            return response;
+                var response = await completionSource.Task.ConfigureAwait(false);
+                return response;
+            }
+            finally
+            {
+                if (!sendTask.IsCompleted)
+                {
+                    await CloseChannelAsync().ConfigureAwait(false);
+                }
+            }
         }
 
         #endregion Public 方法
@@ -185,6 +195,15 @@ namespace System.Net.Http.DotNetty
             if (_disposed)
             {
                 throw new ObjectDisposedException(null);
+            }
+        }
+
+        private async Task CloseChannelAsync()
+        {
+            if (Interlocked.Exchange(ref _channel, null) is IChannel channel)
+            {
+                Debug.WriteLine("CloseChannel");
+                await channel.CloseAsync().ConfigureAwait(false);
             }
         }
 
